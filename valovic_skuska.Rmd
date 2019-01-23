@@ -1,6 +1,0 @@
----
-title: "Skú¹ka"
-output:
-  html_document:
-    df_print: paged
----
