@@ -1,0 +1,95 @@
+---
+title: "Skú¹ka - Valoviè"
+output:
+  html_document: default
+---
+```{r}
+library(tidyverse)
+library(car) #tento package potrebujem pre funkciu `leneveTest()`
+```
+
+```{r}
+diet.data <- read_csv("https://raw.githubusercontent.com/pavolvalovic/Skuska/master/diet.csv",col_names = TRUE, cols(
+  Person = col_integer(),
+  gender = col_integer(),
+  Age = col_integer(),
+  Height = col_integer(),
+  pre.weight = col_integer(),
+  Diet = col_character(),
+  weight6weeks = col_double()
+  )) #naèítanie dát z GitHubu
+diet.data$gender<-gsub(1,"M",diet.data$gender)
+diet.data$gender<-gsub(0,"F",diet.data$gender)
+diet.data <- mutate(diet.data,
+       wloss = pre.weight-weight6weeks)
+arrange(diet.data, Person)
+View(diet.data)
+```
+Naèítané dáta obsahujú informácie o 78 náhodne vybratých osobách, ktoré podstúpili 3 rôzne diéty (ozn. 1,2,3). Informácie zahàòajú ich pohlavie, vek, vý¹ku, hmotnos» pred diétou, typ diéty a hmotnos» po 6 tý¾dòoch be¾iacej diéty. Pre lep¹iu prehµadnos» sme príkazom `gsub()` nahradili oznaèenie pohlavia 0 a 1 za oznaèenie F (female) a M (male). Príkazom `mutate()` sme vytvorili nový ståpec __wloss__, ktorý sa rovná hmotnos» pred diétou _mínus_ hmotnos» po diéte. Tabuµku sme nakoniec zoradili príkazom `arrange()` podµa poradového èísla osoby.
+
+```{r}
+ggplot(data = diet.data) +
+  geom_boxplot(mapping = aes(x = gender, y = pre.weight, color = gender)) +
+  geom_jitter(mapping = aes(x = gender, y = pre.weight, color = gender))
+
+```
+
+Pre prvý náhµad dát sme vykreslili hmotnos» pred diétou __pre.weight__ pre obe pohlavia. Pre ïal¹ie testovania tieto hodnoty ani grafy význam nemajú, je v¹ak vhodné sa aspoò pozrie» na nakreslené dáta.
+
+```{r}
+diet.data <- select(diet.data, Person, gender, Diet, wloss)
+arrange(diet.data, Person)
+```
+Keï¾e nás momentálne zaujíma iba jedinná premenná a tou je strata (presnej¹ie zmena) hmotnosti __wloss__, funkciou `select()` vyberieme z pôvodnej tabuµky iba ståpce __Person__, pohlavie __gender__, druh diéty __Diet__ a u¾ spomínaný __wloss__.
+
+```{r}
+ggplot(data = diet.data) +
+  geom_boxplot(mapping = aes(x = Diet, y = wloss, color = Diet))
+```
+
+Na tomto grafe máme vykreslenú zmenu hmotnosti __wloss__ pre 3 druhy diét. Na prvý pohµad je vidie», ¾e diéta 3 bola úèinnej¹ia ako diéta 1 a 2, musíme v¹ak vhodným testom overi», èi je tento rozdiel aj ¹tatisticky významný.
+
+```{r}
+library("ggpubr")
+ggboxplot(diet.data, x = "Diet", y = "wloss", color = "gender")
+```
+
+Tie¾ sa chceme pozrie», èi malo pohlavie vplyv na zmenu hmotnosti a èi náhodou neexistuje interakcia medzi typom diéty a pohlavím.
+
+
+Budeme pou¾íva» analýzu rozptylu (2 way ANOVA). 
+
+```{r}
+diet.fit <- aov(wloss ~ Diet + gender + Diet:gender, data=diet.data)
+summary(diet.fit)
+```
+Pou¾ili sme funkciu `aov()` pre analýzu rozptylu. Test ukázal, ¾e na hladine významnosti alfa = 5 % je rozdiel medzi troma typmi diét význnamný (p = 0.27 %). Zatia¾ v¹ak e¹te presne nevieme medzi ktorými skupinami. Taktie¾ sme zistili, ¾e pohlavie nemá vplyv na __wloss__ (p = 89.14 %) a taktie¾ na hladine významnosti 5 % nie je interakcia medzi druhom diéty a pohlavím (p = 6.22 %).
+
+
+Na pou¾itie tohto testu v¹ak treba splni» zopár predpokladov - dáta musia by» normálne rozdelené a musí by» splnená homogenita rozptylu v skupinách (t.j. rozptyl v ka¾dej skupine je rovnaký).
+
+```{r}
+leveneTest(wloss ~ Diet * gender, data = diet.data) 
+```
+
+Na overenie homogenity rozptylov sme pou¾ili Leveneov test, ktorý ukázal, ¾e na hladine významnosti alfa = 5 % nie je rozdiel medzi rozptylmi signifikantný (p = 77.51 %) a teda je splnená podmienka o homogenite rozptylov.
+
+```{r}
+plot(diet.fit, 2)
+```
+
+Vykreslili sme Q-Q graf rezíduí na overenie normality. Vidíme, ¾e väè¹ina bodov le¾í na priamke normálneho rozdelenia, preto mô¾eme predpoklada» ¾e na¹e dáta sú tie¾ normálne rozdelené (aj keï pozorujeme pár outlierov, ktorí mô¾u spôsobi» problémy).
+Toto tvrdenie v¹ak podlo¾íme patrièným testom pre normalitu (Shapiro-Wilk).
+```{r}
+diet_residuals <- residuals(object = diet.fit)
+shapiro.test(x = diet_residuals)
+```
+
+P hodnota 27 % nám hovorí, ¾e na hladine významnosti 5 % nezamietame nulovú hypotézu, ¾e dáta sú normálne rozdelené.
+
+Na zistenie medziskupinových rozdielov pou¾ijeme Tukeyho HSD metódu pre viacnásobné porovnávania.
+```{r}
+TukeyHSD(diet.fit)
+```
+
+Pozorným ¹tudovaním tabuµky viacnásobných porovnaní zis»ujeme, ¾e na hladine významnosti 5 % bola diéta 3 významne úèinnej¹ia ako diéta 1 (p = 1.77 %) aj ako diéta 2 (p = 0.40 %). Taktie¾ sme potvrdili, ¾e pohlavie nemalo vplyv na premennú __wloss__ a ¾e nie je pozorovaná ¾iadna interakcia medzi pohlavým a druhom diéty (toto sme u¾ síce zistili predo¹lým testom, mám ale pocit, ¾e je vhodné ukáza» tento výsledok aj v tabuµke viacnásobných porovnaní aj za cenu mierneho "zo¹karedenia" kódu a výstupu).
